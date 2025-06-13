@@ -10,43 +10,26 @@ import requests
 import textwrap
 
 
-DEEPL_LANGUAGES = {
-    "zh": "ZH",
-    "en": "EN",
-    "en-us": "EN-US",
-    "en-gb": "EN-GB",
-    "ja": "JA",
-    "ko": "KO",
-    "fr": "FR",
-    "de": "DE",
-    "es": "ES",
-    "it": "IT",
-    "nl": "NL",
-    "pl": "PL",
-    "pt": "PT-PT",
-    "pt-br": "PT-BR",
-    "ru": "RU",
-    "auto": "AUTO"
-}
+def normalize_lang(lang_code):
+    """轉換為 DeepL 認可的語言代碼"""
+    return lang_code.strip().upper().replace("AUTO", "")
 
 
-def normalize_lang(code):
-    return DEEPL_LANGUAGES.get(code.lower(), code.upper())
-
-
-def translate(text, to_language="EN", from_language="AUTO", wrap_len="80"):
+def translate(text, to_language="EN", from_language=None, wrap_len="80"):
     api_key = "b0199911-c12d-4e91-8bdc-bf85e9ed4d23:fx"
     url = "https://api-free.deepl.com/v2/translate"
+    
+    data = {
+        "auth_key": api_key,
+        "text": text,
+        "target_lang": normalize_lang(to_language)
+    }
+
+    if from_language and normalize_lang(from_language):
+        data["source_lang"] = normalize_lang(from_language)
+
     try:
-        response = requests.post(
-            url,
-            data={
-                "auth_key": api_key,
-                "text": text,
-                "source_lang": normalize_lang(from_language),
-                "target_lang": normalize_lang(to_language)
-            }
-        )
+        response = requests.post(url, data=data)
         response.raise_for_status()
         result = response.json()
         translated_text = result["translations"][0]["text"]
@@ -65,11 +48,10 @@ class KeywordQueryEventListener(EventListener):
     def on_event(self, event, extension):
         query = event.get_argument() or ""
         wrap = extension.preferences.get("wrap", "80")
-        default_from = extension.preferences.get("otherlang", "AUTO")
+        default_from = extension.preferences.get("otherlang", "")
         default_to = extension.preferences.get("mainlang", "EN")
 
         query = query.strip()
-
         if not query:
             return RenderResultListAction([
                 ExtensionResultItem(
@@ -79,7 +61,7 @@ class KeywordQueryEventListener(EventListener):
                 )
             ])
 
-        # 語言代碼格式為: zh:en 你好
+        # 語言格式判斷：zh:en text
         if len(query) > 5 and query[2] == ":":
             from_lang = query[:2]
             to_lang = query[3:5]
