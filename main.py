@@ -5,106 +5,85 @@ from ulauncher.api.shared.item.ExtensionResultItem import ExtensionResultItem
 from ulauncher.api.shared.action.RenderResultListAction import RenderResultListAction
 from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAction
 from ulauncher.api.shared.action.HideWindowAction import HideWindowAction
-
 import requests
-import textwrap
 
-API_KEY = "b0199911-c12d-4e91-8bdc-bf85e9ed4d23:fx"
+API_KEY = "b0199911-c12d-4e91-8bdc-bf85e9ed4d23:fx"  # 建議移至環境變數
 API_URL = "https://api-free.deepl.com/v2/translate"
 USAGE_URL = "https://api-free.deepl.com/v2/usage"
 
-def normalize_lang(lang_code):
-    """轉換為 DeepL 認可的語言代碼"""
-    return lang_code.strip().upper().replace("AUTO", "")
-
 def get_usage_stats():
-    """查詢 DeepL API 使用量統計"""
+    """取得 DeepL 字數使用量 (簡潔版)"""
     try:
-        response = requests.post(USAGE_URL, data={"auth_key": API_KEY})
-        response.raise_for_status()
-        usage_data = response.json()
-        return (
-            f"{usage_data.get('character_count', 0):,}/{usage_data.get('character_limit', 500000):,} "
-            f"(剩餘 {usage_data.get('character_limit', 0) - usage_data.get('character_count', 0):,})"
-        )
-    except Exception as e:
-        return f"使用量查詢失敗: {str(e)}"
+        res = requests.post(USAGE_URL, data={"auth_key": API_KEY})
+        res.raise_for_status()
+        data = res.json()
+        used = data.get("character_count", 0)
+        total = data.get("character_limit", 500000)
+        return f"已用 {used:,}/{total:,} 字 (剩餘 {total - used:,})"
+    except Exception:
+        return "字數統計暫不可用"
 
-def translate(text, to_language="EN", from_language=None, wrap_len="80"):
-    data = {
+def translate(text, to_lang="EN", from_lang=None):
+    """只返回翻譯結果"""
+    params = {
         "auth_key": API_KEY,
         "text": text,
-        "target_lang": normalize_lang(to_language)
+        "target_lang": to_lang.upper().replace("AUTO", "")
     }
-
-    if from_language and normalize_lang(from_language):
-        data["source_lang"] = normalize_lang(from_language)
+    if from_lang and from_lang.upper() not in ("", "AUTO"):
+        params["source_lang"] = from_lang.upper()
 
     try:
-        response = requests.post(API_URL, data=data)
-        response.raise_for_status()
-        result = response.json()
-        translated_text = result["translations"][0]["text"]
-        
-        # 加大字體顯示的格式化
-        formatted_text = f"<big><b>原始文字:</b></big>\n{text}\n\n<big><b>翻譯結果:</b></big>\n{translated_text}"
-        wrapped_text = "\n".join(textwrap.wrap(formatted_text, int(wrap_len) if wrap_len.isdigit() else 80))
-        return wrapped_text
+        res = requests.post(API_URL, data=params)
+        res.raise_for_status()
+        return res.json()["translations"][0]["text"]
     except Exception as e:
-        return f"<big>翻譯錯誤：{e}</big>"
+        return f"翻譯錯誤: {str(e)}"
 
-class TranslateExtension(Extension):
+class DeeplTranslator(Extension):
     def __init__(self):
-        super(TranslateExtension, self).__init__()
-        self.subscribe(KeywordQueryEvent, KeywordQueryEventListener())
+        super().__init__()
+        self.subscribe(KeywordQueryEvent, self.TranslateHandler())
 
-class KeywordQueryEventListener(EventListener):
-    def on_event(self, event, extension):
-        query = event.get_argument() or ""
-        wrap = extension.preferences.get("wrap", "80")
-        default_from = extension.preferences.get("otherlang", "")
-        default_to = extension.preferences.get("mainlang", "EN")
+    class TranslateHandler(EventListener):
+        def on_event(self, event, extension):
+            query = event.get_argument() or ""
+            default_to = extension.preferences.get("mainlang", "EN")
+            default_from = extension.preferences.get("otherlang", "")
 
-        # 獲取使用量資訊
-        usage_stats = get_usage_stats()
+            # 空輸入時顯示提示
+            if not query.strip():
+                return RenderResultListAction([
+                    ExtensionResultItem(
+                        icon="images/icon.png",
+                        name="輸入要翻譯的文字 (例: zh:en 你好)",
+                        description=f"當前字數狀態: {get_usage_stats()}",
+                        on_enter=HideWindowAction()
+                    )
+                ])
 
-        query = query.strip()
-        if not query:
+            # 解析語言代碼
+            parts = query.split(maxsplit=1)
+            if len(parts) > 1 and ":" in parts[0]:
+                from_lang, to_lang = parts[0].split(":", 1)
+                text = parts[1]
+            else:
+                from_lang, to_lang = default_from, default_to
+                text = query
+
+            # 獲取結果
+            translated = translate(text, to_lang, from_lang)
+            usage = get_usage_stats()
+
             return RenderResultListAction([
                 ExtensionResultItem(
-                    icon='images/icon.png',
-                    name='請輸入要翻譯的文字',
-                    description=f"DeepL 使用量: {usage_stats}",
-                    on_enter=HideWindowAction()
+                    icon="images/icon.png",
+                    name=f"{translated}",
+                    description=f"{usage} | {from_lang or 'auto'}→{to_lang}",
+                    on_enter=CopyToClipboardAction(translated),
+                    highlightable=False
                 )
             ])
 
-        # 語言格式判斷：zh:en text
-        if len(query) > 5 and query[2] == ":":
-            from_lang = query[:2]
-            to_lang = query[3:5]
-            text = query[5:].strip()
-        else:
-            from_lang = default_from
-            to_lang = default_to
-            text = query
-
-        translated = translate(text, to_lang, from_lang, wrap)
-
-        return RenderResultListAction([
-            ExtensionResultItem(
-                icon='images/icon.png',
-                name=f"翻譯結果 (使用量: {usage_stats})",
-                description=translated,
-                on_enter=CopyToClipboardAction(
-                    translated.replace("<big>", "")
-                    .replace("</big>", "")
-                    .replace("<b>", "")
-                    .replace("</b>", "")
-                ),
-                highlightable=False
-            )
-        ])
-
-if __name__ == '__main__':
-    TranslateExtension().run()
+if __name__ == "__main__":
+    DeeplTranslator().run()
