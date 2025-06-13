@@ -3,6 +3,8 @@
   "description": "使用 DeepL API 精準翻譯文字，支援語言參數如 zh:en 開頭切換翻譯方向。",
   "developer_name": "ubb0227",
   "icon": "images/icon.png",
+  "required_api_version": "5.0.0",
+  "default_keyword": "tl",
   "options": {
     "mainlang": {
       "type": "text",
@@ -20,7 +22,6 @@
       "description": "每行最多字元數"
     }
   },
-  "default_keyword": "tl",
   "keywords": [
     "translate",
     "tl",
