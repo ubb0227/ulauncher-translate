@@ -6,15 +6,28 @@ from ulauncher.api.shared.action.RenderResultListAction import RenderResultListA
 from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAction
 from ulauncher.api.shared.action.HideWindowAction import HideWindowAction
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 API_KEY = "b0199911-c12d-4e91-8bdc-bf85e9ed4d23:fx"  # 建議移至環境變數
 API_URL = "https://api-free.deepl.com/v2/translate"
 USAGE_URL = "https://api-free.deepl.com/v2/usage"
 
+# 创建持久化会话并配置重试策略
+session = requests.Session()
+retry_strategy = Retry(
+    total=3,
+    backoff_factor=1,
+    status_forcelist=[429, 500, 502, 503, 504]
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+session.mount("https://", adapter)
+session.mount("http://", adapter)
+
 def get_usage_stats():
     """取得 DeepL 字數使用量 (簡潔版)"""
     try:
-        res = requests.post(USAGE_URL, data={"auth_key": API_KEY})
+        res = session.post(USAGE_URL, data={"auth_key": API_KEY}, timeout=3)
         res.raise_for_status()
         data = res.json()
         used = data.get("character_count", 0)
@@ -34,7 +47,7 @@ def translate(text, to_lang="EN", from_lang=None):
         params["source_lang"] = from_lang.upper()
 
     try:
-        res = requests.post(API_URL, data=params)
+        res = session.post(API_URL, data=params, timeout=3)
         res.raise_for_status()
         return res.json()["translations"][0]["text"]
     except Exception as e:
