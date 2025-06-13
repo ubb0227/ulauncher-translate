@@ -1,61 +1,34 @@
-# Utilized resources
-# https://github.com/YogurtTheHorse/ulauncher-translator
-# https://github.com/mouuff/mtranslate
 from ulauncher.api.client.Extension import Extension
 from ulauncher.api.client.EventListener import EventListener
-from ulauncher.api.shared.event import KeywordQueryEvent, ItemEnterEvent
+from ulauncher.api.shared.event import KeywordQueryEvent
 from ulauncher.api.shared.item.ExtensionResultItem import ExtensionResultItem
 from ulauncher.api.shared.action.RenderResultListAction import RenderResultListAction
-from ulauncher.api.shared.action.HideWindowAction import HideWindowAction
 from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAction
+from ulauncher.api.shared.action.HideWindowAction import HideWindowAction
+
+import requests
 import textwrap
-import sys
-import re
-
-if (sys.version_info[0] < 3):
-    import urllib2
-    import urllib
-    import HTMLParser
-else:
-    import html
-    import urllib.request
-    import urllib.parse
-
-agent = {'User-Agent': "Mozilla/5.0 (Android 9; Mobile; rv:67.0.3) Gecko/67.0.3 Firefox/67.0.3"}
 
 
-def unescape(text):
-    if (sys.version_info[0] < 3):
-        parser = HTMLParser.HTMLParser()
-    else:
-        parser = html
-    return (parser.unescape(text))
-
-
-def translate(to_translate, to_language="auto", from_language="auto", wrap_len="80"):
-    base_link = "http://translate.google.com/m?tl=%s&sl=%s&q=%s"
-    if (sys.version_info[0] < 3):
-        to_translate = urllib.quote_plus(to_translate)
-        link = base_link % (to_language, from_language, to_translate)
-        request = urllib2.Request(link, headers=agent)
-        raw_data = urllib2.urlopen(request).read()
-    else:
-        to_translate = urllib.parse.quote(to_translate)
-        link = base_link % (to_language, from_language, to_translate)
-        request = urllib.request.Request(link, headers=agent)
-        raw_data = urllib.request.urlopen(request).read()
-       
-    data = raw_data.decode("utf-8")
-    
-    expr = r'class="result-container">(.*?)<'
-    re_result = re.findall(expr, data)
-    if (len(re_result) == 0):
-        result = ""
-    else:
-        result = unescape(re_result[0])
-    
-    return ("\n".join(textwrap.wrap(result, int(wrap_len) if wrap_len.isdigit() else 80 )))
-
+def translate(text, to_language="EN", from_language="AUTO", wrap_len="80"):
+    api_key = "b0199911-c12d-4e91-8bdc-bf85e9ed4d23:fx"
+    url = "https://api-free.deepl.com/v2/translate"
+    try:
+        response = requests.post(
+            url,
+            data={
+                "auth_key": api_key,
+                "text": text,
+                "source_lang": from_language.upper(),
+                "target_lang": to_language.upper()
+            }
+        )
+        response.raise_for_status()
+        result = response.json()
+        translated_text = result["translations"][0]["text"]
+        return "\n".join(textwrap.wrap(translated_text, int(wrap_len) if wrap_len.isdigit() else 80))
+    except Exception as e:
+        return f"翻譯錯誤：{e}"
 
 
 class TranslateExtension(Extension):
@@ -66,36 +39,42 @@ class TranslateExtension(Extension):
 
 class KeywordQueryEventListener(EventListener):
     def on_event(self, event, extension):
-        query = event.get_argument() or str()
-        
-        if len(query.strip()) == 0:
-            return RenderResultListAction([
-                ExtensionResultItem(icon='images/icon.png',
-                                    name='No input',
-                                    on_enter=HideWindowAction())
-            ])
-        
-        if len(query)>3 and ":" in query[0]:
-            from_language = "auto"
-            to_language = query[1:3]
-            query = query[3:]
-        elif len(query)>5 and ":" in query[2]:
-            from_language = query[:2]
-            to_language = query[3:5]
-            query = query[5:]
-        else:
-            from_language = extension.preferences["otherlang"]
-            to_language = extension.preferences["mainlang"]
-        ceviri = translate(query, to_language, from_language, extension.preferences["wrap"])
-        
-        items = [
-            ExtensionResultItem(icon='images/icon.png',
-                                name=query.replace("\n",""),
-                                description=translate(query, to_language, from_language, extension.preferences["wrap"]),
-                                on_enter=CopyToClipboardAction(ceviri))
-        ]
+        query = event.get_argument() or ""
+        wrap = extension.preferences.get("wrap", "80")
+        default_from = extension.preferences.get("otherlang", "AUTO")
+        default_to = extension.preferences.get("mainlang", "EN")
 
-        return RenderResultListAction(items)
+        query = query.strip()
+
+        if not query:
+            return RenderResultListAction([
+                ExtensionResultItem(
+                    icon='images/icon.png',
+                    name='請輸入要翻譯的文字',
+                    on_enter=HideWindowAction()
+                )
+            ])
+
+        # 判斷語言格式: zh:en text
+        if len(query) > 5 and query[2] == ":":
+            from_lang = query[:2]
+            to_lang = query[3:5]
+            text = query[5:].strip()
+        else:
+            from_lang = default_from
+            to_lang = default_to
+            text = query
+
+        translated = translate(text, to_lang, from_lang, wrap)
+
+        return RenderResultListAction([
+            ExtensionResultItem(
+                icon='images/icon.png',
+                name=f"{text}",
+                description=translated,
+                on_enter=CopyToClipboardAction(translated)
+            )
+        ])
 
 
 if __name__ == '__main__':
