@@ -1,30 +1,37 @@
 {
+  "required_api_version": "^2.0.0",
   "name": "DeepL Translate",
-  "description": "使用 DeepL API 精準翻譯文字，支援語言參數如 zh:en 開頭切換翻譯方向。",
+  "description": "使用 DeepL API 精準翻譯，支援語言格式 like zh:en 或直接輸入文字。",
   "developer_name": "ubb0227",
   "icon": "images/icon.png",
-  "required_api_version": "2.0.0",
-  "default_keyword": "tl",
-  "options": {
-    "mainlang": {
-      "type": "text",
-      "default": "EN",
-      "description": "目標語言（例如 EN, ZH, JA）"
+  "preferences": [
+    {
+      "id": "ceviri",
+      "type": "keyword",
+      "name": "翻譯關鍵字",
+      "description": "觸發翻譯的關鍵字，例如 tl",
+      "default_value": "tl"
     },
-    "otherlang": {
+    {
+      "id": "wrap",
       "type": "text",
-      "default": "AUTO",
-      "description": "來源語言（例如 AUTO, ZH, EN）"
+      "name": "換行寬度",
+      "description": "每行最大字元數（預設 80）",
+      "default_value": "80"
     },
-    "wrap": {
+    {
+      "id": "mainlang",
       "type": "text",
-      "default": "80",
-      "description": "每行最多字元數"
+      "name": "目標語言",
+      "description": "翻譯成哪個語言，2 碼縮寫（如 EN, ZH）",
+      "default_value": "EN"
+    },
+    {
+      "id": "otherlang",
+      "type": "text",
+      "name": "來源語言",
+      "description": "原始語言（AUTO 表示自動偵測）",
+      "default_value": "AUTO"
     }
-  },
-  "keywords": [
-    "translate",
-    "tl",
-    "翻譯"
   ]
 }
