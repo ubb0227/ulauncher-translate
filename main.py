@@ -79,7 +79,7 @@ class DeeplTranslator(Extension):
                 ExtensionResultItem(
                     icon="images/icon.png",
                     name=f"{translated}",
-                    description=f"{usage} | {from_lang or 'auto'} -> {to_lang}",
+                    description=f"{usage} | {from_lang or 'auto'} ==> {to_lang}",
                     on_enter=CopyToClipboardAction(translated),
                     highlightable=False
                 )
