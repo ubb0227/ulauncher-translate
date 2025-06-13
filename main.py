@@ -10,7 +10,31 @@ import requests
 import textwrap
 
 
-def translate(text, target_lang="EN", source_lang="AUTO", wrap_len="80"):
+DEEPL_LANGUAGES = {
+    "zh": "ZH",
+    "en": "EN",
+    "en-us": "EN-US",
+    "en-gb": "EN-GB",
+    "ja": "JA",
+    "ko": "KO",
+    "fr": "FR",
+    "de": "DE",
+    "es": "ES",
+    "it": "IT",
+    "nl": "NL",
+    "pl": "PL",
+    "pt": "PT-PT",
+    "pt-br": "PT-BR",
+    "ru": "RU",
+    "auto": "AUTO"
+}
+
+
+def normalize_lang(code):
+    return DEEPL_LANGUAGES.get(code.lower(), code.upper())
+
+
+def translate(text, to_language="EN", from_language="AUTO", wrap_len="80"):
     api_key = "b0199911-c12d-4e91-8bdc-bf85e9ed4d23:fx"
     url = "https://api-free.deepl.com/v2/translate"
     try:
@@ -19,33 +43,30 @@ def translate(text, target_lang="EN", source_lang="AUTO", wrap_len="80"):
             data={
                 "auth_key": api_key,
                 "text": text,
-                "source_lang": source_lang.upper(),
-                "target_lang": target_lang.upper()
+                "source_lang": normalize_lang(from_language),
+                "target_lang": normalize_lang(to_language)
             }
         )
         response.raise_for_status()
         result = response.json()
         translated_text = result["translations"][0]["text"]
-        return "\n".join(textwrap.wrap(translated_text, int(wrap_len)))
+        return "\n".join(textwrap.wrap(translated_text, int(wrap_len) if wrap_len.isdigit() else 80))
     except Exception as e:
         return f"翻譯錯誤：{e}"
 
 
 class TranslateExtension(Extension):
     def __init__(self):
-        super().__init__()
+        super(TranslateExtension, self).__init__()
         self.subscribe(KeywordQueryEvent, KeywordQueryEventListener())
 
 
 class KeywordQueryEventListener(EventListener):
     def on_event(self, event, extension):
         query = event.get_argument() or ""
-        preferences = extension.preferences
-
-        # 取得設定參數
-        wrap_len = preferences.get("wrap", "80")
-        default_source = preferences.get("otherlang", "AUTO")
-        default_target = preferences.get("mainlang", "EN")
+        wrap = extension.preferences.get("wrap", "80")
+        default_from = extension.preferences.get("otherlang", "AUTO")
+        default_to = extension.preferences.get("mainlang", "EN")
 
         query = query.strip()
 
@@ -58,27 +79,27 @@ class KeywordQueryEventListener(EventListener):
                 )
             ])
 
-        # 支援 zh:en 這種格式切換語言
+        # 語言代碼格式為: zh:en 你好
         if len(query) > 5 and query[2] == ":":
-            source_lang = query[:2]
-            target_lang = query[3:5]
+            from_lang = query[:2]
+            to_lang = query[3:5]
             text = query[5:].strip()
         else:
-            source_lang = default_source
-            target_lang = default_target
+            from_lang = default_from
+            to_lang = default_to
             text = query
 
-        translated = translate(text, target_lang, source_lang, wrap_len)
+        translated = translate(text, to_lang, from_lang, wrap)
 
         return RenderResultListAction([
             ExtensionResultItem(
                 icon='images/icon.png',
-                name=text,
+                name=f"{text}",
                 description=translated,
                 on_enter=CopyToClipboardAction(translated)
             )
         ])
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     TranslateExtension().run()
