@@ -69,7 +69,7 @@ class DeeplTranslator(Extension):
                 return RenderResultListAction([
                     ExtensionResultItem(
                         icon="images/icon.png",
-                        name="輸入要翻譯的文字",
+                        name="歐伊！輸入要翻譯的文字",
                         description=f"當前字數狀態: {get_usage_stats()}",
                         on_enter=HideWindowAction()
                     )
