@@ -2,7 +2,7 @@
   "required_api_version": "^2.0.0",
   "name": "DeepL Translator",
   "description": "翻譯文字使用 DeepL API (Free)",
-  "developer_name": "你的名字",
+  "developer_name": "You",
   "icon": "images/icon.png",
   "options": {
     "query_debounce": 0.3
