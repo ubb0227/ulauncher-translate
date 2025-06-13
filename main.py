@@ -6,23 +6,14 @@ from ulauncher.api.shared.action.RenderResultListAction import RenderResultListA
 from ulauncher.api.shared.action.CopyToClipboardAction import CopyToClipboardAction
 from ulauncher.api.shared.action.HideWindowAction import HideWindowAction
 import requests
+from threading import Thread
+from functools import lru_cache
 
-API_KEY = "b0199911-c12d-4e91-8bdc-bf85e9ed4d23:fx"  # 建議移至環境變數
+API_KEY = "b0199911-c12d-4e91-8bdc-bf85e9ed4d23:fx"
 API_URL = "https://api-free.deepl.com/v2/translate"
 USAGE_URL = "https://api-free.deepl.com/v2/usage"
 
-def get_usage_stats():
-    """取得 DeepL 字數使用量 (簡潔版)"""
-    try:
-        res = requests.post(USAGE_URL, data={"auth_key": API_KEY})
-        res.raise_for_status()
-        data = res.json()
-        used = data.get("character_count", 0)
-        total = data.get("character_limit", 500000)
-        return f"已用 {used:,}/{total:,} 字 (剩餘 {total - used:,})"
-    except Exception:
-        return "字數統計暫不可用"
-
+@lru_cache(maxsize=100)
 def translate(text, to_lang="EN", from_lang=None):
     """只返回翻譯結果"""
     params = {
@@ -40,9 +31,27 @@ def translate(text, to_lang="EN", from_lang=None):
     except Exception as e:
         return f"翻譯錯誤: {str(e)}"
 
+def get_usage_stats():
+    """取得 DeepL 字數使用量 (簡潔版)"""
+    try:
+        res = requests.post(USAGE_URL, data={"auth_key": API_KEY})
+        res.raise_for_status()
+        data = res.json()
+        used = data.get("character_count", 0)
+        total = data.get("character_limit", 500000)
+        return f"已用 {used:,}/{total:,} 字 (剩餘 {total - used:,})"
+    except Exception:
+        return "字數統計暫不可用"
+
 class DeeplTranslator(Extension):
     def __init__(self):
         super().__init__()
+        self.session = requests.Session()
+        # 預熱連接
+        try:
+            self.session.get("https://api-free.deepl.com", timeout=2)
+        except:
+            pass
         self.subscribe(KeywordQueryEvent, self.TranslateHandler())
 
     class TranslateHandler(EventListener):
@@ -51,18 +60,16 @@ class DeeplTranslator(Extension):
             default_to = extension.preferences.get("mainlang", "EN")
             default_from = extension.preferences.get("otherlang", "")
 
-            # 空輸入時顯示提示
             if not query.strip():
                 return RenderResultListAction([
                     ExtensionResultItem(
                         icon="images/icon.png",
                         name="輸入要翻譯的文字",
-                        description=f"當前字數狀態: {get_usage_stats()}",
+                        description="按Enter開始翻譯",
                         on_enter=HideWindowAction()
                     )
                 ])
 
-            # 解析語言代碼
             parts = query.split(maxsplit=1)
             if len(parts) > 1 and ":" in parts[0]:
                 from_lang, to_lang = parts[0].split(":", 1)
@@ -71,19 +78,32 @@ class DeeplTranslator(Extension):
                 from_lang, to_lang = default_from, default_to
                 text = query
 
-            # 獲取結果
+            # 創建初始結果
+            result = [ExtensionResultItem(
+                icon="images/icon.png",
+                name="翻譯中...",
+                description="請稍候",
+                on_enter=HideWindowAction(),
+                highlightable=False
+            )]
+            
+            # 啟動異步翻譯
+            Thread(target=self._async_translate, 
+                 args=(extension, text, to_lang, from_lang, result)).start()
+            
+            return RenderResultListAction(result)
+        
+        def _async_translate(self, extension, text, to_lang, from_lang, result):
             translated = translate(text, to_lang, from_lang)
             usage = get_usage_stats()
-
-            return RenderResultListAction([
-                ExtensionResultItem(
-                    icon="images/icon.png",
-                    name=f"{translated}",
-                    description=f"{usage} | {from_lang or 'auto'} ==> {to_lang}",
-                    on_enter=CopyToClipboardAction(translated),
-                    highlightable=False
-                )
-            ])
+            
+            result[0] = ExtensionResultItem(
+                icon="images/icon.png",
+                name=f"{translated}",
+                description=f"{usage} | {from_lang or 'auto'} ==> {to_lang}",
+                on_enter=CopyToClipboardAction(translated),
+                highlightable=False
+            )
 
 if __name__ == "__main__":
     DeeplTranslator().run()
